@@ -50,7 +50,7 @@ def parse_items(items):
                 ]
             )
         elif exists and todate < now:
-            old.append([name])
+            old.append(name)
 
     return new, old
 
@@ -68,14 +68,19 @@ try:
 
         for item in new:
             res = subprocess.run('bash vm-create.sh ' + ' '.join(item), shell=True, capture_output=True)
-            message(res.stdout.decode())
-            message('ERR ' + res.stderr.decode())
+            out, err = res.stdout.decode(), res.stderr.decode()
+            if out: message(out)
+            if err: message('ERR ' + err)
 
-        #for item in old:
-        #    pipe.write(' '.join(['DESTROY'] + item))
+        for item in old:
+            res = subprocess.run('bash vm-destroy.sh ' + item, shell=True, capture_output=True)
+            out, err = res.stdout.decode(), res.stderr.decode()
+            if out: message(out)
+            if err: message('ERR ' + err)
 
-        #if new or old:
-        #    message(f'created {len(new)} and destroyed {len(old)}')
+        if new or old:
+            message(f'created {len(new)} and destroyed {len(old)}')
+            
 except Exception as ex:
     message(ex)
     message('Exiting')
