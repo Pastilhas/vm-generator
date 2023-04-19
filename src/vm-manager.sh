@@ -8,11 +8,11 @@ function on_exit {
 # Called for each line written to pipe
 # Processes commands to create or delete VMs
 function process_command {
+    echo "${1}"
     local params=()
     read -ra params <<<"${1}"
-    echo "${1}" >&1 >&2
 
-    [[ ${#params[@]} = 6 && ${params[0]} = "CREATE" &&
+    [[ ${#params[@]} = 6 && ${params[0]} = 'CREATE' &&
         ${params[2]} == ^[0-9]+$ && ${params[3]} == ^[0-9]+$ &&
         ${params[4]} == ^[0-9]+$ && ${params[5]} == ^[0-9]+$ ]] &&
         {
@@ -33,8 +33,8 @@ function process_command {
             local date=''
             date=$(date -u +"%Y-%m-%dT%H:%M:%S")
 
-            [[ ${name} == ^[a-zA-Z]+[0-9]*$ ]] && echo 'Incorrect name' >&2 && exit 1
-            [[ ${gpus} > ${gpus_len} || ${disks} > ${disks_len} ]] && echo 'Overloading resources' >&2 && exit 2
+            [[ ${name} == ^[a-zA-Z]+[0-9]*$ ]] || echo 'Incorrect name' >&2 && return 1
+            [[ ${gpus} > ${gpus_len} || ${disks} > ${disks_len} ]] && echo 'Overloading resources' >&2 && return 3
 
             virt-clone --original ${original_vm} --name "${name}" --file "${avail_disks[0]}${name}.qcow2"
             used_disks=("${avail_disks[0]}")
@@ -72,8 +72,9 @@ function process_command {
             } >"${state_dir}${name}"
 
             echo "${date} Created VM ${name}"
+            return 0
         }
-    [[ ${#params[@]} = 2 && ${params[0]} = "DESTROY" ]] &&
+    [[ ${#params[@]} = 2 && ${params[0]} = 'DESTROY' ]] &&
         {
             local name=${params[1]}
             local avail_gpus=()
@@ -81,8 +82,8 @@ function process_command {
             read -ra avail_gpus <${gpus_file}
             read -ra avail_disks <${disks_file}
 
-            [[ ${name} == ^[a-zA-Z]+[0-9]*$ ]] && echo 'Incorrect name' >&2 && exit 1
-            [[ ! -r ${state_dir}${name} ]] && echo 'Machine file does not exis' >&2 && exit 3
+            [[ ${name} == ^[a-zA-Z]+[0-9]*$ ]] && echo 'Incorrect name' >&2 && return 1
+            [[ ! -r ${state_dir}${name} ]] && echo 'Machine file does not exist' >&2 && return 2
             read -ra machine <"${state_dir}${name}"
 
             avail_gpus=("${avail_gpus[@]}" "${machine[4]}")
@@ -100,6 +101,7 @@ function process_command {
             } >"${state_dir}${name}"
 
             echo "${date} Destroyed VM ${name}"
+            return 0
         }
 } 1>>"${log_file}" 2>>"${err_file}"
 
@@ -108,23 +110,26 @@ disk_size='1.7T'
 
 root_path='/var/lib/mlserver/'
 state_dir="${root_path}machines/"
-pipe="${root_path}mlserver_pipe"
+pipe='/tmp/mlserver_pipe'
 disks_file="${root_path}disks_file"
 gpus_file="${root_path}gpus_file"
 log_file="${root_path}log.log"
 err_file="${root_path}err.log"
+
+echo 'Starting VM manager' >'shut.log'
 
 trap on_exit EXIT
 [[ -d ${root_path} && -d ${state_dir} &&
     -r ${disks_file} && -r ${gpus_file} &&
     -r ${log_file} && -r ${err_file} ]] ||
     {
-        echo 'The default files do not exist or are broken' >&2
-        exit 50
+        echo 'The default files do not exist or are broken' >>'shut.log'
+        exit 1
     }
-[[ -p ${pipe} ]] || mkfifo ${pipe}
 
 line=''
 while read -r line <${pipe}; do
-    process_command "${line}"
+    echo "${line}"
+    [[ "${line}" = 'EXIT' ]] && exit 0
+    process_command "${line}" || echo "Error processing ${line}" >>'shut.log'
 done
