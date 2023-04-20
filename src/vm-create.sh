@@ -30,13 +30,11 @@ state_dir="${root_path}machines/"
 disks_file="${root_path}disks_file"
 gpus_file="${root_path}gpus_file"
 
-{
-    [[ ${1} =~ ^[a-zA-Z][a-zA-Z0-9]+$ &&
-        ${2} =~ ^[0-9]+$ && ${3} =~ ^[0-9]+$ &&
-        ${4} =~ ^[0-9]+$ && ${5} =~ ^[0-9]+$ ]]
-} || {
-    exit_message "Incorrect arguments ${*}" 1
-}
+
+[[ ${1} =~ ^[a-zA-Z][a-zA-Z0-9]+$ &&
+    ${2} =~ ^[0-9]+$ && ${3} =~ ^[0-9]+$ &&
+    ${4} =~ ^[0-9]+$ && ${5} =~ ^[0-9]+$ ]] || exit_message "Incorrect arguments ${*}" 1
+
 
 name=${1}
 cpus=${2}
