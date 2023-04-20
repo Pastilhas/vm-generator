@@ -9,6 +9,16 @@ from office365.sharepoint.client_context import ClientContext  # type: ignore
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 
+CPU_PER_GPU = 7
+RAM_STACK   = 32
+
+
+(sp_user, sp_pass, sp_list_name, sp_url) = ('', '', '', '')
+with open('config.json', 'r') as f:
+    obj = json.load(f)
+    (sp_user, sp_pass, sp_list_name, sp_url) = tuple(obj.values())
+
+
 def message(msg):
     timestamp = datetime.utcnow().isoformat(sep=' ', timespec='seconds')
     print(f'[{timestamp}] {msg}')
@@ -21,7 +31,6 @@ def query_sp():
         sp_items = sp_list.get_items()
         ctx.load(sp_items)
         ctx.execute_query()
-        message(f'Read {len(sp_items)} items from the sharepoint list')
         return [i.properties for i in sp_items]
     except:
         message('Error reading sharepoint list')
@@ -29,69 +38,56 @@ def query_sp():
 
 
 def parse_items(items):
-    new, old = [], []
+    changes = []
+    now = datetime.today().date()
+    active = [i for i in items if i['Active']]
 
-    for item in items:
-        if not item['Active']:
-            continue
+    for item in active:
+        name = f'vm{item["Id"]}'
         todate = datetime.strptime(item['To'], '%Y-%m-%dT%H:%M:%SZ').date()
         fromdate = datetime.strptime(item['From'], '%Y-%m-%dT%H:%M:%SZ').date()
-        now = datetime.today().date()
 
-        name = f'vm{item["Id"]}'
-        res = subprocess.run(
-            f'virsh list | grep -o {name}', shell=True, capture_output=True
-        )
-        exists = res.stdout.decode().strip()
+        exists = subprocess.run(f'virsh list | grep -o {name}', shell=True, capture_output=True).stdout.decode().strip()
+
         if not exists and fromdate < now and todate >= now:
-            new.append(
-                [
-                    name,
-                    str(item['GPUS'] * 4),
-                    str(item['RAM_x0028_32GB_x0029_'] * 32),
-                    str(item['GPUS']),
-                    str(item['Storage_x0028_2TB_x0029_']),
-                ]
-            )
+            changes.append([
+                'bash',
+                'vm-create.sh',
+                name,
+                str(item['GPUS'] * CPU_PER_GPU),
+                str(item['RAM_x0028_32GB_x0029_'] * RAM_STACK),
+                str(item['GPUS']),
+                str(item['Storage_x0028_2TB_x0029_']),
+            ])
+
         elif exists and todate < now:
-            old.append(name)
+            changes.append([
+                'bash',
+                'vm-destroy.sh',
+                name,
+            ])
 
-    return new, old
-
-
-with open('config.json', 'r') as f:
-    obj = json.load(f)
-    (sp_user, sp_pass, sp_list_name, sp_url) = tuple(obj.values())
+    return changes
 
 
 try:
     while True:
         time.sleep(5)
         items = query_sp()
-        new, old = parse_items(items)
+        if not items: continue
+        changes = parse_items(items)
+        if not changes: continue
 
-        for item in new:
-            res = subprocess.run(
-                'bash vm-create.sh ' + ' '.join(item), shell=True, capture_output=True
-            )
+        for item in changes:
+            res = subprocess.run(item, capture_output=True)
             out, err = res.stdout.decode(), res.stderr.decode()
-            for line in out.splitlines():
-                message(line)
-            for line in err.splitlines():
-                message('ERR ' + line)
+            for line in out.splitlines(): message(line)
+            for line in err.splitlines(): message('ERR ' + line)
 
-        for item in old:
-            res = subprocess.run(
-                'bash vm-destroy.sh ' + item, shell=True, capture_output=True
-            )
-            out, err = res.stdout.decode(), res.stderr.decode()
-            for line in out.splitlines():
-                message(line)
-            for line in err.splitlines():
-                message('ERR ' + line)
-
-        if new or old:
-            message(f'created {len(new)} and destroyed {len(old)}')
+        on = subprocess.run('virsh list | grep -Poh [0-9]+', shell=True, capture_output=True).stdout.decode().strip()
+        of = subprocess.run('virsh list | grep -Poh -- \"- \"', shell=True, capture_output=True).stdout.decode().strip()
+        message(f'Currently active {len(on.splitlines())}')
+        message(f'Currently inactive {len(of.splitlines())}')
 
 except Exception as ex:
     message(ex)
