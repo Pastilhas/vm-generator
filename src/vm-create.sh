@@ -102,4 +102,5 @@ echo "${avail_disks[@]}" >${disks_file}
     echo "${used_disks[@]}"
 } >"${state_dir}${name}"
 
+virsh start "${name}" && sleep 10
 echo "Created ${name}"

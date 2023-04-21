@@ -95,7 +95,7 @@ def send_email(subject, body, userid):
 
 def create_email(name, userid):
     mac = subprocess.run(f'virsh dumpxml {name} | grep -o ..:..:..:..:..:..', shell=True, capture_output=True).stdout.decode().strip()
-    ip = subprocess.run(f'dhcp-lease-list | grep -Po \"(?<={mac}\\W\\W).*?(?= )\"', shell=True, capture_output=True).stdout.decode().strip()
+    ip = subprocess.run(f'dhcp-lease-list | grep -Po \"(?<={mac}  ).*?(?= )\"', shell=True, capture_output=True).stdout.decode().strip()
     if not mac or not ip: raise Exception('Failed to find machine mac and ip')
 
     send_email('Request accepted', f'''
@@ -105,6 +105,9 @@ Access it using an SSH client and the following details:
 IP: {ip}
 Login: vm
 Password: vm
+
+For example, run this command in your preferred terminal:
+ssh vm@{ip}
 ''', userid)
     
 def destroy_email(userid):
@@ -133,7 +136,7 @@ try:
 
         on = subprocess.run('virsh list | grep -Poh [0-9]+', shell=True, capture_output=True).stdout.decode().strip()
         of = subprocess.run('virsh list | grep -Poh -- \"- \"', shell=True, capture_output=True).stdout.decode().strip()
-        message(f'Currently active {len(on.splitlines())}')
+        message(f'Currently   active {len(on.splitlines())}')
         message(f'Currently inactive {len(of.splitlines())}')
 
 except Exception as ex:
