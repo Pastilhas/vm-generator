@@ -8,6 +8,7 @@ from office365.runtime.auth.user_credential import UserCredential  # type: ignor
 from office365.sharepoint.client_context import ClientContext  # type: ignore
 
 
+if subprocess.run('grep "root.*request-manager.py" <<< $(ps -fA)', shell=True, capture_output=True).stdout.strip(): exit(0)
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 
