@@ -1,6 +1,8 @@
 #!/usr/local/bin/python
 
-import os, subprocess, json, time
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import os, subprocess, json, time, smtplib
 from datetime import datetime
 from office365.runtime.auth.user_credential import UserCredential  # type: ignore
 from office365.sharepoint.client_context import ClientContext  # type: ignore
@@ -50,7 +52,7 @@ def parse_items(items):
         exists = subprocess.run(f'virsh list | grep -o {name}', shell=True, capture_output=True).stdout.decode().strip()
 
         if not exists and fromdate < now and todate >= now:
-            changes.append([
+            changes.append(([
                 'bash',
                 'vm-create.sh',
                 name,
@@ -58,16 +60,58 @@ def parse_items(items):
                 str(item['RAM_x0028_32GB_x0029_'] * RAM_STACK),
                 str(item['GPUS']),
                 str(item['Storage_x0028_2TB_x0029_']),
-            ])
+            ], item['UserId'], name))
 
         elif exists and todate < now:
-            changes.append([
+            changes.append(([
                 'bash',
                 'vm-destroy.sh',
                 name,
-            ])
+            ], item['UserId'], ''))
 
     return changes
+
+
+def send_email(subject, body, userid):
+    ctx = ClientContext(sp_url).with_credentials(UserCredential(sp_user, sp_pass))
+    user = ctx.web.site_users.filter(f'Id eq {userid}')
+    ctx.load(user)
+    ctx.execute_query()
+    if not user: return
+    user = user[0].properties
+    
+    mimemsg = MIMEMultipart()
+    mimemsg["From"] = sp_user
+    mimemsg["To"] = user["Email"]
+    mimemsg["Subject"] = subject
+    mimemsg.attach(MIMEText(body, 'plain'))
+        
+    connection = smtplib.SMTP(host='smtp.office365.com', port=587)
+    connection.starttls()
+    connection.login(sp_user, sp_pass)
+    connection.send_message(mimemsg)
+    connection.quit()
+
+
+def create_email(name, userid):
+    mac = subprocess.run(f'virsh dumpxml {name} | grep -o ..:..:..:..:..:..', shell=True, capture_output=True).stdout.decode().strip()
+    ip = subprocess.run(f'dhcp-lease-list | grep -Po \"(?<={mac}\\W\\W).*?(?= )\"', shell=True, capture_output=True).stdout.decode().strip()
+    if not mac or not ip: raise Exception('Failed to find machine mac and ip')
+
+    send_email('Request accepted', f'''
+Your request for a machine has been accepted.
+Access it using an SSH client and the following details:
+
+IP: {ip}
+Login: vm
+Password: vm
+''', userid)
+    
+def destroy_email(userid):
+    send_email('Access revoked', f'''
+Your reservation for a machine has reached its end.
+Access to it has been revoked.
+''', userid)
 
 
 try:
@@ -78,11 +122,14 @@ try:
         changes = parse_items(items)
         if not changes: continue
 
-        for item in changes:
-            res = subprocess.run(item, capture_output=True)
+        for (command, userid, name) in changes:
+            res = subprocess.run(command, capture_output=True)
             out, err = res.stdout.decode(), res.stderr.decode()
             for line in out.splitlines(): message(line)
             for line in err.splitlines(): message('ERR ' + line)
+
+            if name: create_email(name, userid)
+            else: destroy_email(userid)
 
         on = subprocess.run('virsh list | grep -Poh [0-9]+', shell=True, capture_output=True).stdout.decode().strip()
         of = subprocess.run('virsh list | grep -Poh -- \"- \"', shell=True, capture_output=True).stdout.decode().strip()
