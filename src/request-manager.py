@@ -52,7 +52,7 @@ def parse_items(items):
 
         exists = subprocess.run(f'virsh list | grep -o {name}', shell=True, capture_output=True).stdout.decode().strip()
 
-        if not exists and fromdate < now and todate >= now:
+        if not exists and fromdate <= now and todate >= now:
             changes.append(([
                 'bash',
                 'vm-create.sh',
@@ -80,13 +80,13 @@ def send_email(subject, body, userid):
     ctx.execute_query()
     if not user: return
     user = user[0].properties
-    
+
     mimemsg = MIMEMultipart()
     mimemsg["From"] = sp_user
     mimemsg["To"] = user["Email"]
     mimemsg["Subject"] = subject
     mimemsg.attach(MIMEText(body, 'plain'))
-        
+
     connection = smtplib.SMTP(host='smtp.office365.com', port=587)
     connection.starttls()
     connection.login(sp_user, sp_pass)
@@ -110,7 +110,7 @@ Password: vm
 For example, run this command in your preferred terminal:
 ssh vm@{ip}
 ''', userid)
-    
+
 def destroy_email(userid):
     send_email('Access revoked', f'''
 Your reservation for a machine has reached its end.
