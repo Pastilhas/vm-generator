@@ -48,34 +48,30 @@ read -ra avail_disks <${disks_file}
 alph=(echo {b..z})
 date=$(date -u +"%Y-%m-%d %H:%M:%S")
 
-[[ ${gpus} > ${#avail_gpus[@]} || ${disks} > ${#avail_disks[@]} ]] &&
-    exit_message 'Overloading resources' 2
+[[ ${gpus} > ${#avail_gpus[@]} || ${disks} > ${#avail_disks[@]} ]] && exit_message 'Overloading resources' 2
 
 {
     virt-clone --original ${original_vm} --name "${name}" --file "${avail_disks[0]}${name}.qcow2" &>'/dev/null' &&
         used_disks=("${avail_disks[0]}") &&
         avail_disks=("${avail_disks[@]:1}")
-} || {
-    exit_message 'Failed cloning original machine' 3
-}
+} || exit_message 'Failed cloning original machine' 3
+
 
 {
     virsh setvcpus "${name}" "${cpus}" --maximum --config &&
         virsh setvcpus "${name}" "${cpus}" --config &&
         virsh setmaxmem "${name}" "${mem}G" --config &&
         virsh setmem "${name}" "${mem}G" --config
-} || {
-    exit_message 'Failed setting cpus and memory' 4
-}
+} || exit_message 'Failed setting cpus and memory' 4
+
 
 for _ in $(seq "${gpus}"); do
     {
         virsh attach-device "${name}" "${avail_gpus[0]}" --config &&
             used_gpus=("${used_gpus[@]}" "${avail_gpus[0]}") &&
             avail_gpus=("${avail_gpus[@]:1}")
-    } || {
-        exit_message 'Failed attaching the gpus' 5
-    }
+    } || exit_message 'Failed attaching the gpus' 5
+    
 done
 
 for _ in $(seq "${disks}"); do
@@ -85,10 +81,14 @@ for _ in $(seq "${disks}"); do
             used_disks=("${used_disks[@]}" "${avail_disks[0]}") &&
             avail_disks=("${avail_disks[@]:1}") &&
             alph=("${alph[@]:1}")
-    } || {
-        exit_message 'Failed attaching the gpus' 6
-    }
+    } || exit_message 'Failed attaching the disks' 6
+    
 done
+
+virsh start "${name}" || exit_message 'Failed starting' 7
+
+sleep 10 
+echo "Created ${name}"
 
 echo "${avail_gpus[@]}" >${gpus_file}
 echo "${avail_disks[@]}" >${disks_file}
@@ -101,6 +101,3 @@ echo "${avail_disks[@]}" >${disks_file}
     echo "${used_gpus[@]}"
     echo "${used_disks[@]}"
 } >"${state_dir}${name}"
-
-virsh start "${name}" && sleep 10
-echo "Created ${name}"
