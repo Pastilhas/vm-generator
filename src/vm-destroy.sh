@@ -1,25 +1,8 @@
 #!/usr/bin/bash
 
 function exit_message {
-    if [ -n "${1}" ]; then
-        echo "${1}" >&2
-    else
-        echo 'Failure while creating machine'
-    fi
-
-    if [ -n "${name}" ]; then
-        virsh undefine "${name}"
-
-        for disk in "${used_disks[@]}"; do
-            rm "${disk}${name}.qcow2"
-        done
-    fi
-
-    if [ -n "${2}" ]; then
-        exit "${2}"
-    else
-        exit 255
-    fi
+    [ -n "${1}" ] && echo "${1}" >&2 || echo 'Failure while creating machine'
+    [ -n "${2}" ] && exit "${2}" || exit 255
 }
 
 root_path='/var/lib/mlserver/'
@@ -35,16 +18,15 @@ name=${1}
 read -ra avail_gpus <${gpus_file}
 read -ra avail_disks <${disks_file}
 date_now=$(date -u +"%Y-%m-%d %H:%M:%S")
+date_then=$(grep -Po "[0-9]+-[0-9]+-[0-9]+ [0-9]+:[0-9]+:[0-9]+" <"${state_dir}${name}")
+cpus=$(grep -Po "[0-9]+(?!=G)" <"${state_dir}${name}")
+mem=$(grep -Po "[0-9]+(?=G)" <"${state_dir}${name}")
+used_gpus=("$(grep -Po "/var/lib/mlserver/gpus/.*xml" <"${state_dir}${name}")")
+used_disks=("$(grep -Po "/mnt/disk[0-9]/" <"${state_dir}${name}")")
 
-read -ra machine <"${state_dir}${name}"
-date_then=${machine[1]}
-cpus=${machine[2]}
-mem=${machine[3]}
-used_gpus=("${machine[4]}")
-used_disks=("${machine[5]}")
-
-virsh destroy "${name}"
-virsh undefine "${name}"
+{
+    virsh destroy "${name}" && virsh undefine "${name}"
+} || exit_message "Failed to destroy ${name}" 3
 
 for disk in "${used_disks[@]}"; do
     rm "${disk}${name}.qcow2"
