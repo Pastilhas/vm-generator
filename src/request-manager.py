@@ -123,22 +123,23 @@ try:
         time.sleep(5)
         items = query_sp()
         if not items: continue
+        # message(f'Found {len(items)} items')
         changes = parse_items(items)
         if not changes: continue
+        # message(f'Found {len(items)} changes')
 
         for (command, userid, name) in changes:
             res = subprocess.run(command, capture_output=True)
             out, err = res.stdout.decode(), res.stderr.decode()
-            for line in out.splitlines(): message(line)
-            for line in err.splitlines(): message('ERR ' + line)
+            [message(line) for line in out.splitlines() if line]
+            [message('ERR ' + line) for line in err.splitlines() if line]
+            if res.returncode: continue
 
             if name: create_email(name, userid)
             else: destroy_email(userid)
 
-        on = subprocess.run('virsh list | grep -Poh [0-9]+', shell=True, capture_output=True).stdout.decode().strip()
-        of = subprocess.run('virsh list | grep -Poh -- \"- \"', shell=True, capture_output=True).stdout.decode().strip()
+        on = subprocess.run('virsh list | grep -Poh vm[0-9]+', shell=True, capture_output=True).stdout.decode().strip()
         message(f'Currently   active {len(on.splitlines())}')
-        message(f'Currently inactive {len(of.splitlines())}')
 
 except Exception as ex:
     message(ex)
