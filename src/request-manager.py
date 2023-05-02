@@ -66,7 +66,7 @@ def parse_items(items):
 
         elif exists and todate < now:
             changes.append((
-                f'bash vm-create.sh {name}',
+                f'bash vm-destroy.sh {name}',
                 item['UserId'],
                 '',
             ))
